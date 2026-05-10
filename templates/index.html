@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>MiniASM Assembler</title>
+<style>
+  :root {
+    --bg:       #0f1117;
+    --surface:  #1a1d27;
+    --border:   #2e3147;
+    --accent:   #7c6af7;
+    --accent2:  #5eead4;
+    --text:     #e2e8f0;
+    --muted:    #64748b;
+    --error:    #f87171;
+    --success:  #4ade80;
+    --warn:     #fbbf24;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  header .logo {
+    width: 36px; height: 36px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 8px;
+    display: grid; place-items: center;
+    font-weight: 800; font-size: 15px; color: #fff;
+  }
+  header h1 { font-size: 18px; font-weight: 700; letter-spacing: -.3px; }
+  header span { color: var(--muted); font-size: 13px; margin-left: 4px; }
+
+  /* ── Layout ── */
+  .workspace {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto 1fr;
+    gap: 0;
+    height: calc(100vh - 65px);
+  }
+
+  /* ── Editor pane ── */
+  .editor-pane {
+    grid-row: 1 / 3;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+  }
+
+  .pane-header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .pane-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    color: var(--muted);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .pane-title .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+  }
+
+  .editor-wrap {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .line-numbers {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 16px 10px 16px 14px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--muted);
+    text-align: right;
+    user-select: none;
+    overflow: hidden;
+    min-width: 44px;
+    white-space: pre;
+  }
+
+  #editor {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+    padding: 16px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text);
+    caret-color: var(--accent2);
+    tab-size: 8;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 16px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: opacity .15s, transform .1s;
+  }
+  .btn:active { transform: scale(.97); }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover { opacity: .88; }
+  .btn-ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover { color: var(--text); border-color: var(--muted); }
+
+  /* ── Output pane ── */
+  .output-pane {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Tabs ── */
+  .tabs {
+    display: flex;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .tab {
+    padding: 10px 18px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: var(--muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color .15s;
+    white-space: nowrap;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .tab .badge {
+    display: inline-block;
+    background: var(--border);
+    color: var(--muted);
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 10px;
+    margin-left: 5px;
+  }
+  .tab.active .badge { background: var(--accent); color: #fff; }
+  .tab.error-tab.has-errors { color: var(--error); border-bottom-color: var(--error); }
+  .tab.error-tab.has-errors .badge { background: var(--error); color: #fff; }
+
+  .tab-content {
+    display: none;
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .tab-content.active { display: block; }
+
+  /* ── Tables ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+  }
+  thead th {
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    padding: 10px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 1;
+  }
+  tbody tr { border-bottom: 1px solid var(--border); }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(124,106,247,.06); }
+  tbody td { padding: 9px 16px; vertical-align: top; }
+
+  .addr-cell { color: var(--accent2); font-weight: 600; }
+  .code-cell { color: var(--warn); }
+  .ann-cell  { color: var(--muted); }
+  .sym-cell  { color: var(--accent); font-weight: 600; }
+  .tok-cell  { color: var(--text); }
+  .lbl-cell  { color: var(--accent2); }
+
+  /* ── Error list ── */
+  .error-list { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+  .error-item {
+    background: rgba(248,113,113,.08);
+    border: 1px solid rgba(248,113,113,.25);
+    border-left: 3px solid var(--error);
+    border-radius: 6px;
+    padding: 10px 14px;
+    display: flex; gap: 12px; align-items: flex-start;
+  }
+  .error-line {
+    background: var(--error);
+    color: #fff;
+    border-radius: 4px;
+    padding: 1px 8px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .error-msg { color: var(--error); font-family: var(--font-mono); font-size: 13px; }
+
+  /* ── Empty / success states ── */
+  .empty-state {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 100%; gap: 10px;
+    color: var(--muted); font-size: 13px;
+    padding: 40px;
+    text-align: center;
+  }
+  .empty-state .icon { font-size: 36px; opacity: .4; }
+
+  .success-banner {
+    margin: 12px;
+    background: rgba(74,222,128,.08);
+    border: 1px solid rgba(74,222,128,.25);
+    border-left: 3px solid var(--success);
+    border-radius: 6px;
+    padding: 10px 14px;
+    color: var(--success);
+    font-size: 13px;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  /* ── Status bar ── */
+  .status-bar {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 5px 16px;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex; gap: 16px; align-items: center;
+    flex-shrink: 0;
+  }
+  .status-bar .ok   { color: var(--success); }
+  .status-bar .fail { color: var(--error); }
+
+  /* ── Spinner ── */
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,.2);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+    display: none;
+  }
+  .loading .spinner { display: block; }
+  .loading .btn-label { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* scrollbar webkit */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">M</div>
+  <div>
+    <h1>MiniASM <span>Two-Pass Assembler</span></h1>
+  </div>
+</header>
+
+<div class="workspace">
+
+  <!-- ── Left: Editor ── -->
+  <div class="editor-pane">
+    <div class="pane-header">
+      <div class="pane-title"><span class="dot"></span>Source Editor</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" onclick="loadSample()">Load Sample</button>
+        <button class="btn btn-ghost" onclick="clearEditor()">Clear</button>
+        <button class="btn btn-primary" id="assembleBtn" onclick="runAssemble()">
+          <div class="spinner"></div>
+          <span class="btn-label">▶ Assemble</span>
+        </button>
+      </div>
+    </div>
+    <div class="editor-wrap">
+      <div class="line-numbers" id="lineNumbers">1</div>
+      <textarea id="editor" spellcheck="false" placeholder="; Write your MiniASM code here...
+; Example:
+;   DATA X, 10
+;   LOAD R1, (X)
+;   HALT"></textarea>
+    </div>
+    <div class="status-bar" id="statusBar">
+      <span id="statusText">Ready</span>
+      <span id="lineCol">Ln 1, Col 1</span>
+    </div>
+  </div>
+
+  <!-- ── Right: Output ── -->
+  <div class="output-pane">
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('machine')" id="tab-machine">
+        Machine Code <span class="badge" id="badge-machine">0</span>
+      </div>
+      <div class="tab" onclick="switchTab('symbols')" id="tab-symbols">
+        Symbols <span class="badge" id="badge-symbols">0</span>
+      </div>
+      <div class="tab" onclick="switchTab('intermediate')" id="tab-intermediate">
+        Intermediate <span class="badge" id="badge-intermediate">0</span>
+      </div>
+      <div class="tab error-tab" onclick="switchTab('errors')" id="tab-errors">
+        Errors <span class="badge" id="badge-errors">0</span>
+      </div>
+    </div>
+
+    <!-- Machine Code -->
+    <div class="tab-content active" id="content-machine">
+      <div class="empty-state" id="mc-empty">
+        <div class="icon">⚙️</div>
+        <div>Assemble your code to see machine output</div>
+      </div>
+      <div id="mc-table" style="display:none">
+        <table>
+          <thead><tr><th>Addr</th><th>Machine Code</th><th>Annotation</th></tr></thead>
+          <tbody id="mc-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Symbols -->
+    <div class="tab-content" id="content-symbols">
+      <div class="empty-state" id="sym-empty">
+        <div class="icon">🏷️</div>
+        <div>Symbol table will appear here</div>
+      </div>
+      <div id="sym-table" style="display:none">
+        <table>
+          <thead><tr><th>Symbol</th><th>Address</th></tr></thead>
+          <tbody id="sym-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Intermediate -->
+    <div class="tab-content" id="content-intermediate">
+      <div class="empty-state" id="ir-empty">
+        <div class="icon">📋</div>
+        <div>Intermediate representation will appear here</div>
+      </div>
+      <div id="ir-table" style="display:none">
+        <table>
+          <thead><tr><th>Line</th><th>Addr</th><th>Label</th><th>Tokens</th></tr></thead>
+          <tbody id="ir-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Errors -->
+    <div class="tab-content" id="content-errors">
+      <div class="empty-state" id="err-empty">
+        <div class="icon">✅</div>
+        <div>No errors — looking good!</div>
+      </div>
+      <div id="err-list" style="display:none" class="error-list"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const SAMPLE = {{ sample | tojson }};
+
+// ── Editor line numbers ──────────────────────────────────────────────────────
+const editor = document.getElementById('editor');
+const lineNumbers = document.getElementById('lineNumbers');
+
+function updateLineNumbers() {
+  const lines = editor.value.split('\n').length;
+  lineNumbers.textContent = Array.from({length: lines}, (_, i) => i + 1).join('\n');
+}
+
+function updateCursor() {
+  const text = editor.value.substring(0, editor.selectionStart);
+  const lines = text.split('\n');
+  document.getElementById('lineCol').textContent =
+    `Ln ${lines.length}, Col ${lines[lines.length - 1].length + 1}`;
+}
+
+editor.addEventListener('input', updateLineNumbers);
+editor.addEventListener('keydown', e => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const s = editor.selectionStart, end = editor.selectionEnd;
+    editor.value = editor.value.substring(0, s) + '        ' + editor.value.substring(end);
+    editor.selectionStart = editor.selectionEnd = s + 8;
+    updateLineNumbers();
+  }
+});
+editor.addEventListener('keyup', updateCursor);
+editor.addEventListener('click', updateCursor);
+editor.addEventListener('scroll', () => { lineNumbers.scrollTop = editor.scrollTop; });
+
+// ── Tabs ─────────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('content-' + name).classList.add('active');
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function loadSample() {
+  editor.value = SAMPLE;
+  updateLineNumbers();
+  updateCursor();
+}
+
+function clearEditor() {
+  editor.value = '';
+  updateLineNumbers();
+  resetOutputs();
+  document.getElementById('statusText').textContent = 'Ready';
+  document.getElementById('statusText').className = '';
+}
+
+function resetOutputs() {
+  ['mc', 'sym', 'ir'].forEach(p => {
+    document.getElementById(p + '-empty').style.display = '';
+    document.getElementById(p + '-table').style.display = 'none';
+  });
+  document.getElementById('err-empty').style.display = '';
+  document.getElementById('err-list').style.display = 'none';
+  ['machine','symbols','intermediate','errors'].forEach(t => {
+    document.getElementById('badge-' + t).textContent = '0';
+  });
+  document.getElementById('tab-errors').classList.remove('has-errors');
+}
+
+// ── Assemble ─────────────────────────────────────────────────────────────────
+async function runAssemble() {
+  const source = editor.value.trim();
+  if (!source) return;
+
+  const btn = document.getElementById('assembleBtn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/assemble', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({source})
+    });
+    const data = await res.json();
+    renderResults(data);
+  } catch(e) {
+    document.getElementById('statusText').textContent = 'Network error';
+    document.getElementById('statusText').className = 'fail';
+  } finally {
+    btn.classList.remove('loading');
+    btn.disabled = false;
+  }
+}
+
+function renderResults(data) {
+  resetOutputs();
+
+  // ── Machine Code ──
+  const mcBody = document.getElementById('mc-body');
+  mcBody.innerHTML = '';
+  if (data.machine_code.length) {
+    data.machine_code.forEach(r => {
+      mcBody.innerHTML += `<tr>
+        <td class="addr-cell">${r.addr.toString().padStart(4,'0')}</td>
+        <td class="code-cell">${r.code}</td>
+        <td class="ann-cell">${r.annotation}</td>
+      </tr>`;
+    });
+    document.getElementById('mc-empty').style.display = 'none';
+    document.getElementById('mc-table').style.display = '';
+  }
+  document.getElementById('badge-machine').textContent = data.machine_code.length;
+
+  // ── Symbols ──
+  const symBody = document.getElementById('sym-body');
+  symBody.innerHTML = '';
+  if (data.symbols.length) {
+    data.symbols.forEach(s => {
+      symBody.innerHTML += `<tr>
+        <td class="sym-cell">${s.name}</td>
+        <td class="addr-cell">${s.address}</td>
+      </tr>`;
+    });
+    document.getElementById('sym-empty').style.display = 'none';
+    document.getElementById('sym-table').style.display = '';
+  }
+  document.getElementById('badge-symbols').textContent = data.symbols.length;
+
+  // ── Intermediate ──
+  const irBody = document.getElementById('ir-body');
+  irBody.innerHTML = '';
+  if (data.intermediate.length) {
+    data.intermediate.forEach(r => {
+      irBody.innerHTML += `<tr>
+        <td class="addr-cell">${r.line}</td>
+        <td class="addr-cell">${r.addr}</td>
+        <td class="lbl-cell">${r.label}</td>
+        <td class="tok-cell">${r.tokens}</td>
+      </tr>`;
+    });
+    document.getElementById('ir-empty').style.display = 'none';
+    document.getElementById('ir-table').style.display = '';
+  }
+  document.getElementById('badge-intermediate').textContent = data.intermediate.length;
+
+  // ── Errors ──
+  const errList = document.getElementById('err-list');
+  errList.innerHTML = '';
+  if (data.errors.length) {
+    data.errors.forEach(e => {
+      errList.innerHTML += `<div class="error-item">
+        <span class="error-line">Line ${e.line}</span>
+        <span class="error-msg">${e.msg}</span>
+      </div>`;
+    });
+    document.getElementById('err-empty').style.display = 'none';
+    errList.style.display = '';
+    document.getElementById('tab-errors').classList.add('has-errors');
+    switchTab('errors');
+  }
+  document.getElementById('badge-errors').textContent = data.errors.length;
+
+  // ── Status bar ──
+  const statusEl = document.getElementById('statusText');
+  if (data.errors.length === 0) {
+    statusEl.textContent = `✓ Assembly successful — ${data.machine_code.length} instructions`;
+    statusEl.className = 'ok';
+    switchTab('machine');
+  } else {
+    statusEl.textContent = `✗ ${data.errors.length} error(s) found`;
+    statusEl.className = 'fail';
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+loadSample();
+</script>
+</body>
+</html>
